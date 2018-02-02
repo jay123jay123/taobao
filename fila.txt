@@ -1,0 +1,177 @@
+CREATE TABLE `nike` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `brand` varchar(32) NOT NULL,
+  `name` varchar(512) NOT NULL,
+  `url` varchar(64) NOT NULL,
+  `msales` int(16) NOT NULL,
+  `mprice` int(16) NOT NULL,
+  `promotion_price` int(16) NULL,
+  `mactivity` varchar(512) NOT NULL,
+  `gettime` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `url` (`url`,`gettime`)
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8;
+
+
+
+#!/usr/bin/env python
+
+from pyspider.libs.base_handler import *
+import re
+from pyspider.database.mysql.mysqldb import SQL
+import time
+import random
+
+class Handler(BaseHandler):
+    crawl_config = {
+        'headers': {
+           'Connection':'keep-alive',
+            'Accept-Encoding':'gzip, deflate, br',
+            'Accept-Language':'zh-CN,zh;q=0.8',
+            'content-type':'application/x-www-form-urlencoded',
+            'Referer':'https://uniqlo.tmall.com/',
+            'User-Agent':'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'
+        }
+    }
+    
+    def __init__(self):
+        self.base_url = {
+            "clothes" : "https://fila.tmall.com/category-448441394.htm?spm=a1z10.5-b-s.w4011-14828881389.89.3dfeb298d6LFfy&scene=taobao_shop&catId=448441394&search=y&orderType=hotsell_desc&viewType=list" ,
+            "trousers" : "https://fila.tmall.com/category.htm?spm=a1z10.5-b-s.w4011-14828881389.88.1fea63a6svQ3KQ&catId=1128541657&search=y&orderType=hotsell_desc&keyword=%C4%D0&viewType=list" , 
+            "T-shirt" : "https://fila.tmall.com/category-684052266.htm?spm=a1z10.5-b-s.w4011-14828881389.79.de5d33jk3yU3&scene=taobao_shop&catId=684052266&search=y&orderType=hotsell_desc&viewType=list" ,
+            "long-T-shirt" : "https://fila.tmall.com/category-958477086.htm?spm=a1z10.5-b-s.w4011-14828881389.81.554f92a26NWQx1&scene=taobao_shop&catId=958477086&search=y&orderType=hotsell_desc&viewType=list",
+            "sweater": "https://fila.tmall.com/category-1340500509.htm?spm=a1z10.3-b-s.w4011-14828881403.77.7fd3163LadciO&scene=taobao_shop&catId=1340500509&search=y&orderType=hotsell_desc&viewType=list" ,
+            "feather" : "https://fila.tmall.com/category-1255591603.htm?spm=a1z10.3-b-s.w4011-14828881403.80.7e0b8b9eMvod2g&scene=taobao_shop&catId=1255591603&search=y&orderType=hotsell_desc&viewType=list"
+        
+        }
+        self.gettime = time.strftime("%Y-%m-%d", time.localtime()) 
+        self.brand = ""
+        self.num = 0
+        self.pageCount = 60
+        self.tb = "fila"
+        self.tbCount = "filaCount"        
+        
+
+
+    @every(minutes= 24 * 60 , seconds=0)
+    def on_start(self):        
+        for key in self.base_url: 
+            i = random.randint(1,60)
+            url = self.base_url[key]
+            self.crawl(url, callback=self.index_page , exetime=time.time()+ i*5 , retries=10, validate_cert=False , fetch_type="js" , js_script='''
+               function() {
+                 setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 16000);
+               }
+               ''' ,timeout=360,connect_timeout=180, save={'brand':key})
+            
+            
+
+
+
+    @config(age= 60) 
+    def index_page(self, response):
+        count = 0
+        
+        self.num = int(response.doc('.ui-page-s-len').text().split('/')[1])
+        if self.num >= 1:
+            if self.num == 1:
+                self.detail_countOne(response)
+            else:
+                suffix = '&pageNo=' + str(self.num)
+                url = self.base_url[response.save['brand']] + suffix
+                i = random.randint(1,30)
+                self.crawl(url, callback=self.detail_count, exetime=time.time()+ i  , validate_cert=False , fetch_type="js" , js_script='''
+                   function() {
+                     setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 9000);
+                   }
+                   ''' , timeout=360,connect_timeout=180, save = {'brand' : response.save['brand'] , 'num' :self.num })        
+            
+        for each in response.doc('.title > a').items():
+            if count >= 20:
+                break
+            i = random.randint(1,120)
+            self.crawl(each.attr.href, callback=self.detail_page, exetime=time.time()+ i  , validate_cert=False , fetch_type="js" , js_script='''
+               function() {
+                 setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 9000);
+               }
+               ''' , timeout=360,connect_timeout=180, save = {'brand' : response.save['brand']})
+            count += 1
+
+   
+    @config(age= 60) 
+    def detail_countOne(self , response):
+        c = 0
+        for cc in response.doc('.title > a').items():
+            if cc: 
+                c += 1        
+
+        total = c
+
+        
+        brandCount = {
+            "brand" : response.save['brand'],
+            "gettime" :  self.gettime , 
+            "count" : total ,
+            "url" : self.base_url[response.save['brand']]
+        }
+        sql = SQL()
+        sql.insert('filaCount',**brandCount)  
+
+
+    @config(age= 60) 
+    def detail_count(self , response): 
+        c = 0
+        for cc in response.doc('.title > a').items():
+            if cc: 
+                c += 1
+        
+        total = self.pageCount * (int(response.save['num']) - 1)  + c
+        
+        brandCount = {
+            "brand" : response.save['brand'],
+            "gettime" :  self.gettime , 
+            "count" : total ,
+            "url" : self.base_url[response.save['brand']]
+        }
+        sql = SQL()
+        sql.insert(self.tbCount,**brandCount)             
+            
+            
+            
+    @config(age= 60)             
+    def detail_page(self, response):
+        name = response.doc('.tb-detail-hd > h1').text()
+        msales = response.doc('.tm-ind-sellCount .tm-count').text()    
+        mprice = response.doc('.tm-price').text()
+        promotion_price = response.doc('.tm-promo-price > .tm-price').text()
+        mactivity = response.doc('.tm-gold > dd').text()
+        
+        return { 
+               "brand" : response.save['brand'] ,
+               "url": response.url[0:49],
+               "name" : name.encode('utf-8') ,
+               "msales": msales ,
+               "mprice": mprice ,
+               "promotion_price" : promotion_price ,
+               "mactivity": mactivity ,
+               "gettime" : self.gettime
+        }
+    
+    def on_result(self,result):
+        if not result or not result['url'] or not result['name'] :
+            return
+        sql = SQL()
+        sql.insert(self.tb,**result)  
+
+
+
+
+
+
+
+
+
+
+
+
+

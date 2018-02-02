@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+
+from pyspider.libs.base_handler import *
+import re
+from pyspider.database.mysql.mysqldb import SQL
+
+
+class Handler(BaseHandler):
+    crawl_config = {
+    }
+    
+    def __init__(self):
+        #self.base_url = "https://semir.tmall.com/search.htm?spm=a1z10.3-b-s.w4011-14592463410.497.564d19baQ0pO0S&search=y&scene=taobao_shop&pageNo="
+        self.base_url = {
+            "semir" : "https://semir.tmall.com/search.htm?spm=a1z10.3-b-s.w4011-14592463410.497.564d19baQ0pO0S&search=y&scene=taobao_shop&pageNo=" ,
+            "uniqlo" : "https://uniqlo.tmall.com/category.htm?spm=a1z10.5-b-s.w4011-15676986369.330.34be4d9dJj95Eq&pageNo="
+        
+        }
+        self.page_total = 30
+        self.brand = ""
+        self.page_num = ""
+        
+
+
+    @every(minutes=24 * 60)
+    def on_start(self):        
+        for key in self.base_url:
+            self.page_num = 1
+            
+            while self.page_num <= self.page_total:
+                url = self.base_url[key] + str(self.page_num)
+                self.crawl(url, callback=self.index_page ,  validate_cert=False , fetch_type="js" , save={'brand':key})
+                self.page_num += 1
+
+
+
+    def index_page(self, response):
+        for each in response.doc('.last > .detail > .J_TGoldData').items():
+            self.crawl(each.attr.href, callback=self.detail_page , fetch_type="js" , save = {'brand' : response.save['brand']})
+
+    def detail_page(self, response):
+        name = response.doc('.tb-detail-hd > h1').text()
+        msales = response.doc('.tm-ind-sellCount .tm-count').text()    
+        comments = response.doc('.tm-line3 .tm-count').text()
+        return { 
+               "brand" : response.save['brand'] ,
+               "url": response.url,
+               "name" : name.encode('utf-8') ,
+               "msales": msales ,
+               "comments": comments
+        }
+    
+    
+    def on_result(self,result):
+        if not result or not result['url'] or not result['name'] :
+            return
+        sql = SQL()
+        sql.insert('tsales',**result)  
+
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
