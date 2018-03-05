@@ -1,0 +1,271 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+
+from pyspider.libs.base_handler import *
+import re
+from pyspider.database.mysql.mysqldb import SQL
+import time
+import random
+import os
+
+DIR_PATH='/root/xuguanjun/getimg/taobao/'
+
+class Handler(BaseHandler):
+    headers= {
+		"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+		"Accept-Encoding":"gzip, deflate, sdch",
+		"Accept-Language":"zh-CN,zh;q=0.8",
+		"Cache-Control":"max-age=0",
+		"Connection":"keep-alive",
+        "User-Agent":"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36"
+
+    }
+    
+    crawl_config = {
+        "headers" : headers,
+        "timeout" : 100
+    }
+    
+    def __init__(self):
+        self.base_url = { 
+            "jingshen-trousers" : "https://underarmour.tmall.com/category-870093257-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.80.205beb834yPpaY&parentCatId=870090214&parentCatName=%C4%D0%D7%D3%CF%C2%D7%B0&parentCatPageId=684949889&catName=%BD%F4%C9%ED%BF%E3&catId=870093257&search=y&orderType=hotsell_desc&viewType=list",  
+            "clothes" : "https://underarmour.tmall.com/category-870090218-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.82.374ed592N9gRWd&parentCatId=870088872&parentCatName=%C4%D0%D7%D3%C9%CF%D7%B0&parentCatPageId=684949889&catName=%CD%E2%CC%D7&catId=870090218&search=y&orderType=hotsell_desc&viewType=list" , 
+            "hat-clothes" : "https://underarmour.tmall.com/category-870090220-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.76.354a3fe564y0ZG&parentCatId=870088872&parentCatName=%C4%D0%D7%D3%C9%CF%D7%B0&parentCatPageId=684949889&catName=%C1%AC%C3%B1%C9%CF%D2%C2&catId=870090220&search=y&orderType=hotsell_desc&viewType=list" , 
+            "long-T-shirt" : "https://underarmour.tmall.com/category-870088874-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.87.4c286d85Wq2lmg&parentCatId=870088872&parentCatName=%C4%D0%D7%D3%C9%CF%D7%B0&parentCatPageId=684949889&catName=%B3%A4%D0%E4&catId=870088874&search=y&orderType=hotsell_desc&viewType=list" ,
+            "T-shirt" : "https://underarmour.tmall.com/category-870088873-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.71.5b282d78A4I5pY&parentCatId=870088872&parentCatName=%C4%D0%D7%D3%C9%CF%D7%B0&parentCatPageId=684949889&catName=%B6%CC%D0%E4&catId=870088873&viewType=list&search=y&orderType=hotsell_desc" ,
+            "polo" : "https://underarmour.tmall.com/category-870090219-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.78.3eee50feR6gn7E&parentCatId=870088872&parentCatName=%C4%D0%D7%D3%C9%CF%D7%B0&parentCatPageId=684949889&catName=POLO%C9%C0&catId=870090219&search=y&orderType=hotsell_desc&viewType=list" ,
+            "trousers" : "https://underarmour.tmall.com/category-870093256-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.82.5f23d56blgKBtn&parentCatId=870090214&parentCatName=%C4%D0%D7%D3%CF%C2%D7%B0&parentCatPageId=684949889&catName=%B3%A4%BF%E3&catId=870093256&search=y&orderType=hotsell_desc&viewType=list" ,
+            "short-trousers" : "https://underarmour.tmall.com/category-870090216-684949889.htm?spm=a1z10.5-b-s.w4011-14440465492.78.306703168GPa4w&parentCatId=870090214&parentCatName=%C4%D0%D7%D3%CF%C2%D7%B0&parentCatPageId=684949889&catName=%B6%CC%BF%E3&catId=870090216&search=y&orderType=hotsell_desc&viewType=list"    ,
+            "NewGoods" : "https://underarmour.tmall.com/category-1348944166.htm?spm=a1z10.5-b-s.w4011-14440465492.49.788574c3r1Na8P&parentCatId=964521622&parentCatName=%D0%C2%C6%B7%CD%C6%BC%F6&catName=%C4%D0%D7%D3%D0%C2%C6%B7&catId=1348944166&viewType=list&search=y&orderType=newOn_desc&csy=1&pv=122216608:20532#TmshopSrchNav"
+            
+            
+        }
+        self.gettime = time.strftime("%Y-%m-%d", time.localtime()) 
+        self.brand = ""
+        self.num = 0
+        self.pageCount = 100
+        self.tb = "underarmour"
+        self.tbCount = "underarmourCount"    
+        self.deal=Deal()        
+
+
+    @every(minutes= 24 * 60 , seconds=0)
+    @config(age= 60)     
+    def on_start(self):        
+        for key in self.base_url: 
+            i = random.randint(1,300)
+            url = self.base_url[key]
+            self.crawl(url, callback=self.index_page , exetime=time.time()+ i*2 , retries=10, validate_cert=False , fetch_type="js" , js_script='''
+               function() {
+                 setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 16000);
+               }
+               ''' ,timeout=360,connect_timeout=180, save={'brand':key})
+            
+    def rematch(self , str):
+        x = re.compile(u'男')
+        y = re.compile(u'鞋')
+        a = x.findall(str)
+        b = y.findall(str)
+        if len(a) == 0:
+            return 0
+        if len(b) > 0:
+            return 0
+        
+        return 1            
+
+
+
+    @config(age= 60) 
+    def index_page(self, response):
+
+        if response.save['brand'] == 'NewGoods':
+            cnum = 50
+        else:
+            cnum = 30        
+        count = 0
+        tempnum = response.doc('.ui-page-s-len').text().split('/')
+        self.num = tempnum[1]
+        if self.num >= 1:
+            if self.num == 1:
+                self.detail_countOne(response)
+            else:
+                suffix = '&pageNo=' + str(self.num)
+                url = self.base_url[response.save['brand']] + suffix
+                i = random.randint(1,300)
+                self.crawl(url, callback=self.detail_count, exetime=time.time()+ i*3  , validate_cert=False , fetch_type="js" , js_script='''
+                   function() {
+                     setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 16000);
+                   }
+                   ''' , timeout=360,connect_timeout=180, save = {'brand' : response.save['brand'] , 'num' :self.num })
+            
+        
+        
+        
+        for each in response.doc('.title > a').items():
+            
+            if self.rematch(each.text()) == 0:
+                continue
+                
+            if count >= cnum:
+                break
+            i = random.randint(1,300)
+            url = each.attr.href.replace('detail','detail.m')
+            #print url
+            self.crawl(url, callback=self.detail_page, exetime=time.time()+ i*7  , validate_cert=False , fetch_type="js" , js_script='''
+               function() {
+                 setTimeout("window.scrollTo(0,document.documentElement.scrollHeight)", 32000);
+                 
+               }
+               ''' ,js_run_at="document-end" ,load_images='true' , timeout=360,connect_timeout=180, save = {'brand' : response.save['brand']})
+            count += 1
+
+    
+    @config(age= 60) 
+    def detail_countOne(self , response):
+        c = 0
+        for cc in response.doc('.title > a').items():
+            if cc: 
+                c += 1        
+
+        total = c
+
+        
+        brandCount = {
+            "brand" : response.save['brand'],
+            "gettime" :  self.gettime , 
+            "count" : total ,
+            "url" : self.base_url[response.save['brand']]
+        }
+        sql = SQL()
+        sql.insert(self.tbCount,**brandCount)             
+    
+    
+    @config(age= 60)             
+    def detail_count(self , response): 
+        c = 0
+        for cc in response.doc('.title > a').items():
+            if cc: 
+                c += 1
+        
+        total = self.pageCount * (int(response.save['num']) - 1)  + c
+        
+        brandCount = {
+            "brand" : response.save['brand'],
+            "gettime" :  self.gettime , 
+            "count" : total ,
+            "url" : self.base_url[response.save['brand']]
+        }
+        sql = SQL()
+        sql.insert('underarmourCount',**brandCount) 
+        #print total, self.pageCount , c , self.num
+  
+
+
+    @config(age= 60) 
+    def detail_page(self, response):
+        #print response.url
+        #print response.url[0:50]
+        #name = response.doc('.tb-detail-hd > h1').text()
+        name = response.doc('#J_mod4 > div > div > div').text()
+        #msales = response.doc('.tm-ind-sellCount .tm-count').text()    
+        msales = response.doc('#J_mod6 > div > span.sales').text().split(" ")[1][:-1]
+        #print msales 
+        #mprice = response.doc('.tm-price').text()
+        mprice = response.doc('#J_mod5 > div > div > span > span').text()
+        #print mprice
+        #promotion_price = response.doc('.tm-promo-price > .tm-price').text()
+        promotion_price = response.doc('.tm-promo-price > .tm-price').text()
+        #mactivity = response.doc('.tm-gold > dd').text()
+        mactivity = response.doc('#J_mod9 > div > div > div:nth-child(1) > div.cell > span').text()
+        goodsid =  response.url.split('=')[1].split('&')[0]
+        dir_path = DIR_PATH + goodsid
+        if os.path.exists(dir_path):
+            pass
+        else:
+            dir_path=self.deal.mkDIR(goodsid)
+            
+            
+            
+        #imgs=response.doc('.tb-thumb-content img').items()
+        imgs=response.doc('.preview-scroller img').items()
+
+        count = 0
+        for img in imgs:
+            #print img
+            url = img.attr.src
+            #print url
+            if url:
+                i = random.randint(1,300)
+                #suffix = '430x430q90.jpg'
+                #newurl = url[:-12] + suffix
+                newurl = url
+                filename = str(count) + '.jpg'
+                if os.path.exists(dir_path + '/' + filename):
+                    pass
+                else:
+                    dir_path=self.deal.mkDIR(goodsid)               
+                    self.crawl(newurl, callback=self.save_img, exetime=time.time()+ i*3  , validate_cert=False , save={'save_path':dir_path,'file_name':filename})
+                count += 1
+                
+        return { 
+               "brand" : response.save['brand'] ,
+               #"url": response.url[0:50],
+               "url" : "https://detail.tmall.com/item.htm?id=" + goodsid ,
+               "name" : name.encode('utf-8') ,
+               "msales": msales ,
+               "mprice": mprice ,
+               "promotion_price" : promotion_price ,
+               "mactivity": mactivity ,
+               "gettime" : self.gettime
+        }
+ 
+    def save_img(self,response):
+        content=response.content
+        dir_path=response.save['save_path']
+        file_name=response.save['file_name']
+        file_path=dir_path+'/'+file_name
+        self.deal.save_Img(content,file_path) 
+
+
+    def on_result(self,result):
+        if not result or not result['url'] or not result['name'] :
+            return
+        sql = SQL()
+        sql.insert(self.tb,**result)  
+        
+        
+        
+        
+        
+class Deal:
+    def __init__(self):
+        self.dir_path=DIR_PATH
+        if not self.dir_path.endswith('/'):
+            self.dir_path=self.dir_path+'/'
+        if not os.path.exists(self.dir_path):
+            os.makedirs(self.dir_path)
+
+    def mkDIR(self,name):
+        name=name.strip()
+        #dir_name=self.dir_path+'/'+name
+        dir_name=self.dir_path+name
+        exists=os.path.exists(dir_name)
+        if not exists:
+            os.makedirs(dir_name)
+            return dir_name
+        else:
+            return dir_name
+
+    def save_Img(self,content,file_name):
+        file=open(file_name,'wb')
+        file.write(content)
+        file.close()        
+        
+        
+        
+        
+        
+        
+        
+        
+        
